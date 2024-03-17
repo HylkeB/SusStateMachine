@@ -12,6 +12,14 @@ is impossible to have multiple active states. This eliminates all sorts of concu
 
 The way you have to set up the states of your state machine also helps to keep them readable.
 
+## Gradle dependency
+
+To use this library, just add the following dependency to your project.
+
+```kotlin
+implementation("io.github.hylkeb:susstatemachine:$version")
+```
+
 ## Example
 
 Consider the following simple finite state machine that describes the states of an API request.
