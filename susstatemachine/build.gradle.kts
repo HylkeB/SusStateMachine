@@ -78,8 +78,10 @@ android {
 
 // Help found here: https://github.com/vanniktech/gradle-maven-publish-plugin/?tab=readme-ov-file
 // and here: https://vanniktech.github.io/gradle-maven-publish-plugin/central/
+// and here: https://dev.to/kotlin/how-to-build-and-publish-a-kotlin-multiplatform-library-going-public-4a8k
+// and here: https://getstream.io/blog/publishing-libraries-to-mavencentral-2021/#automating-sonatype-actions
 mavenPublishing {
-    publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL, automaticRelease = false) // might want to set this to true later
+    publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL, automaticRelease = true)
     signAllPublications()
     val version = System.getenv("GITHUB_REF_NAME")?.drop(1) ?: "0.0.0" // remove v from vX.Y.Z
     println("Resolved version: $version")
