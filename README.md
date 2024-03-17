@@ -1,63 +1,227 @@
 # SusStateMachine
+_suspending state machine_
 
-Kotlin Multiplatform Library
+![Maven Central Version](https://img.shields.io/maven-central/v/io.github.hylkeb/susstatemachine)
 
-### Publish to MavenCentral
+SusStateMachine is a tiny library to create simple yet powerful and robust finite state machines.
+It is short for _**suspending state machine**_
 
-1) Registering a Sonatype account as described here: 
-   https://dev.to/kotlin/how-to-build-and-publish-a-kotlin-multiplatform-library-going-public-4a8k
-2) Add developer id, name, email and the project url to
-   `/convention-plugins/src/main/kotlin/convention.publication.gradle.kts`
-3) Add the secrets to `local.properties`:
+The robustness lies in the fact that each must be implemented as a self-contained class, and can
+only execute suspending code when the state is active. The way the StateMachine is implemented it
+is impossible to have multiple active states. This eliminates all sorts of concurrency issues.
 
+The way you have to set up the states of your state machine also helps to keep them readable.
+
+## Example
+
+Consider the following simple finite state machine that describes the states of an API request.
+This request will be exposed by one class, and can be re-used by multiple consumers.
+The state machine makes sure only one actual call is being performed, and it makes it easy for concurrent consumers to reuse the state.
+
+[![](https://mermaid.ink/img/pako:eNp9ksFqwzAMhl_FuATDaKGsNx922NrBYL10Y5d5BzWWU5PELoozVkrffY5d0jK2EYiV__ulGElHXnqNXPKiOCrHmHU2SJZCxkTYYYtCMrGFDsX0Wn0DsrBtsBOjPSINVK9jQcEkC9TjdCQBv8KDbzwN5SaLxUJcWGMdXth8Pr9ie7It0OH1n_Sz5a8KWyjrinzvtJBiYoy5Yi1Yd19XKQu0ERmchiO-TkWhXBcg4NJCRdDOPm-zQ1vCMljv2PMmK-83H2w2u2NPusGsDFGSHjGUO-uq2JMUZjyqg2VF5CnydCrlzBn-Yl1CgLFSvF5flth1pm-yN1f68dsNBjpkntIHHC-s3PDwKW-RYid0XIM0SsXTiBWXMdRooG-C4rEf0Qp98C8HV3KZ5sv7vb70h0sDTTeqK22Dp1HE9LnO-5bW7vQNf83ClQ?type=png)](https://mermaid-js.github.io/mermaid-live-editor/edit#pako:eNp9ksFqwzAMhl_FuATDaKGsNx922NrBYL10Y5d5BzWWU5PELoozVkrffY5d0jK2EYiV__ulGElHXnqNXPKiOCrHmHU2SJZCxkTYYYtCMrGFDsX0Wn0DsrBtsBOjPSINVK9jQcEkC9TjdCQBv8KDbzwN5SaLxUJcWGMdXth8Pr9ie7It0OH1n_Sz5a8KWyjrinzvtJBiYoy5Yi1Yd19XKQu0ERmchiO-TkWhXBcg4NJCRdDOPm-zQ1vCMljv2PMmK-83H2w2u2NPusGsDFGSHjGUO-uq2JMUZjyqg2VF5CnydCrlzBn-Yl1CgLFSvF5flth1pm-yN1f68dsNBjpkntIHHC-s3PDwKW-RYid0XIM0SsXTiBWXMdRooG-C4rEf0Qp98C8HV3KZ5sv7vb70h0sDTTeqK22Dp1HE9LnO-5bW7vQNf83ClQ)
+
+> Note: This example is also implemented in the unit test of this library, see [SystemTest](./susstatemachine/src/commonTest/kotlin/io/github/hylkeb/susstatemachine/SystemTest.kt).
+
+### Define the states
+
+In this example, the states will be defined using a sealed interface, so each state is easily mock-able by libraries such as [MocKMP](https://github.com/kosi-libs/MocKMP).
+Other mocking libraries also allow mocking of concrete classes, in which case a sealed class could also be used instead.
+
+However, by defining the states as a sealed interface, you can easily define the total functionality of the state machine in one file.
+
+```kotlin
+sealed interface RequestState : State<RequestState> {
+    /** The Idle state of this Request, waits until a fetch is requested before continuing to Fetching */
+    interface Idle : RequestState {
+        /** Initiate the fetch, results in transition towards Fetching */
+        suspend fun fetch()
+    }
+    
+    /** In this state the API will be called and based on the result it will either go to Error or Data */
+    interface Fetching : RequestState
+    
+    /** This state is active is the last fetch failed */
+    interface Error : RequestState {
+        /** The reason why the fetch failed */
+        val cause: Throwable
+        /** Retry the fetch, results in a transition towards Fetching */
+        suspend fun retry() 
+    }
+    
+    /** The request has successfully been executed and data is available */
+    interface Data : RequestState {
+        /** The response data */
+        val data: String
+    }
+}
 ```
-signing.keyId=...
-signing.password=...
-signing.secretKeyRingFile=...
-ossrhUsername=...
-ossrhPassword=...
+
+### Implementing the states
+
+Each state is defined as one distinct interface, thus it should be implemented as one class per state.
+The following code shows some very simple implementation for each of the states.
+
+As each state also implements the `State<T : State>` interface, they must implement the `suspend fun enter(): Transition<T>` method.
+This is where the magic happens, this function performs the work a state must do and then returns a transition towards a new state.
+Sometimes the work a state must do is just wait for some external signal, and sometimes it can directly start its work as soon as its entered.
+
+The `Transition` class describes a transition to a new toState.
+It can optionally contain a reason an cause for troubleshooting.
+
+> Note that some states also extend the `StateImpl` abstract class.
+> This class contains a convenience method `awaitTransition()`, which suspends until the state machine has a new active state.
+> This is helpful when the transition of this state depends on an external signal.
+> See it in action at [using the state machine](#using-the-state-machine).
+
+```kotlin
+class IdleStateImpl : StateImpl<RequestState>(), RequestState.Idle {
+    private val fetchRequested: CompletableJob = Job()
+
+    override suspend fun enter(): Transition<RequestState> {
+        fetchRequested.join()
+        return Transition(FetchingStateImpl())
+    }
+
+    override suspend fun fetch() {
+        fetchRequested.complete()
+        awaitTransition() // method defined in StateImpl class
+    }
+}
+
+class FetchingStateImpl : RequestState.Fetching {
+    override suspend fun enter(): Transition<RequestState> {
+        // Get api from somewhere, assume its some global property (but its better to provide some DI container for testability)
+        val response = api.doApiCall()
+            .getOrElse { ex -> 
+                return Transition(ErrorStateImpl(ex), "api error", ex)
+            }
+        return Transition(DataStateImpl(response))
+    }
+}
+
+class ErrorStateImpl(
+    override val cause: Throwable
+) : StateImpl<RequestState>(), RequestState.Error {
+    private val retryRequested: CompletableJob = Job()
+    
+    override suspend fun enter(): Transition<RequestState> {
+        retryRequested.join()
+        return Transition(FetchingStateImpl())
+    }
+    
+    override suspend fun retry() {
+        retryRequested.complete()
+        awaitTransition()
+    }
+}
+
+class DataStateImpl(
+    override val data: String
+) : RequestState.Data {
+    override suspend fun enter(): Transition<RequestState> {
+        // In this example this is the end state (no refresh possibility)
+        // so it just waits until cancellation (which happens if the state machine is cancelled)
+        awaitCancellation()
+    }
+}
 ```
 
-4) Run `./gradlew :dodo:publishAllPublicationsToSonatypeRepository`
+### Using the state machine
 
-### Build platform artifacts
+Now that the state machine has been described and implemented, it's time to use it.
+In this particular example we're defining a `RequestManager` class which is responsible for
+providing the data associated with this request, or an error if it fails.
+If multiple consumers request the data simultaneously, it should let every additional consumer piggyback on the already running request.
 
-#### Android aar
+For this to happen, the `RequestManager` will instantiate a `StateMachine` and run it.
 
-- Run `./gradlew :susstatemachine:assembleRelease`
-- Output: `/susstatemachine/build/outputs/aar/susstatemachine-release.aar`
+Furthermore it will have one method called `suspend fun getData(): Result<String>`
 
-#### JVM jar
+> Note that the request itself is no longer bound to a particular consumer, but to some other lifecycle.
+> This could be any lifecycle, for example just the lifecycle of the application altogether,
+> or an arbitrary lifecycle such as the lifecycle of a logged in customer.
+> Just make sure that the coroutine that runs the state machine is cancelled at the end.
 
-- Run `./gradlew :susstatemachine:jvmJar`
-- Output: `/susstatemachine/build/libs/susstatemachine-jvm-1.0.jar`
+```kotlin
+class RequestManager {
+    // Create the state machine with the initial state
+    val stateMachine: StateMachine<RequestState> = StateMachineImpl(IdleStateImpl())
 
-#### iOS Framework
+    // Let some external lifecycle manager create the coroutine necessary to run this requestManager
+    suspend fun run() {
+        stateMachine.run()
+    }
 
-- Run `./gradlew :susstatemachine:linkReleaseFrameworkIosArm64`
-- Output: `/susstatemachine/build/bin/iosArm64/releaseFramework/susstatemachine.framework`
+    // Returns the result of the request, either success or error
+    suspend fun getResponse(): Result<String> {
+        // First check what the current state is, maybe directly return, or trigger a state transition
+        when (val currentState = stateMachine.stateFlow.first()) {
+            is RequestState.Data -> return Result.success(currentState.data) // reuse successful response directly
+            is RequestState.Idle -> currentState.fetch() // first attempt at getting the response, start fetching
+            is RequestState.Fetching -> { /*No direct action needed, will observe states instead*/ }
+            is RequestState.Error -> currentState.retry() // new attempt at getting the response, retry the request
+        }
+        
+        // If the fetch() and retry() methods didn't call awaitTransition(), the state wouldn't have updated yet
+        // and as a result the statement below would directly return a failure, instead of waiting for the result of the new Fetching state.
+        
+        // Data wasn't directly available, start observing the flow of states until a terminal state is emitted.
+        return stateMachine.stateFlow
+            .mapNotNull { state ->
+                when (state) {
+                    is RequestState.Data -> Result.success(state.data) // fetch resulted in data
+                    is RequestState.Fetching -> null // still fetching, wait until next state transition
+                    is RequestState.Error -> Result.failure(state.cause) // fetch resulted in an error
+                    is RequestState.Idle -> Result.failure(IllegalStateException("RequestState should not be Initial here, was the state overridden?"))
+                }
+            }
+            .first()
+    }
+}
+```
 
-#### JS file
+This single manager experiences the benefits of the state machine.
 
-- Run `./gradlew :susstatemachine:jsBrowserProductionWebpack`
-- Output: `/susstatemachine/build/dist/js/productionExecutable/susstatemachine.js`
+Because the states are defined as a sealed interface or class, it can perform exhaustive when statements,
+always rigorously handling every case.
 
-#### macOS Framework
+Furthermore because the StateMachine can only be in one state at the same time, and the magic happens in the enter method,
+it also benefits from thread-safety. No matter how many concurrent `getResponse()` calls are being made, and potentially concurrent `fetch()` or `retry()`
+calls are being made, it can always only result in one state transition, thus one active fetching state.
 
-- Run `./gradlew :susstatemachine:linkReleaseFrameworkMacosArm64`
-- Output: `/susstatemachine/build/bin/macosArm64/releaseFramework/susstatemachine.framework`
+## Testability
 
-#### Linux static library
+**State**
 
-- Run `./gradlew :susstatemachine:linkReleaseStaticLinuxX64`
-- Output: `/susstatemachine/build/bin/linuxX64/releaseStatic/libsusstatemachine.a`
+Each state is its own distinct class, with a very simple interface: an `enter()` method and possibly some external methods.
+Even if a state is responsible for doing a lot of complex steps (e.g. fetching data, reading storage, writing storage),
+with the proper DI infrastructure it is easy to test all of its transitions.
 
-#### Windows static library
+**StateMachine consumers**
 
-- Run `./gradlew :susstatemachine:linkReleaseStaticMingwX64`
-- Output: `/susstatemachine/build/bin/mingwX64/releaseStatic/libsusstatemachine.a`
+The StateMachine consumer (in the example above the RequestManager) can easily be tested by mocking the
+StateMachine, as its a simple interface. Just stub the stateFlow with your own prefilled stateFlow with
+mocked states, and you can easily test if your StateMachine consumer works properly, without mocking every
+dependency of the states themselves.
 
-#### Wasm binary file
+## Observability
 
-- Run `./gradlew :susstatemachine:wasmJsBrowserDistribution`
-- Output: `/susstatemachine/build/dist/wasmJs/productionExecutable/susstatemachine-wasm-js.wasm`
+The `StateMachineImpl` class optionally accepts a `stateMachineName` and a `StateObserver` and the `State` interface defines the property `State.name`.
+Whenever a state transition is about to happen, the `StateObserver.stateTransition(..)` method is called.
+
+The StateObserver is defined as following:
+
+```kotlin
+interface StateObserver {
+    fun stateTransition(
+        stateMachine: String, // name as provided when instantiating StateMachineImpl; defaults to "state-machine"
+        fromState: String, // name of the state that just completed, defaults to State::class.simpleName.toString()
+        toState: String, // name of the state that is about to be entered
+        reason: String?, // the reason of the state transition, as defined in the Transition class
+        cause: Throwable? // the cause of the state transition, as defined in the Transition class
+    )
+}
+```
+
+On purpose the state observer operates only on strings (and a Throwable), to discourage control flow based
+on these events. This observer should only be used for troubleshooting.

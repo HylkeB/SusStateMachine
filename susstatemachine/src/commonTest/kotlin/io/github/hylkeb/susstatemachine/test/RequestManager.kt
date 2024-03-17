@@ -15,7 +15,6 @@ import org.kodein.di.instance
  */
 class RequestManager(di: DI) : DIAware by di {
     val stateMachine: StateMachine<RequestState> by instance()
-//    val stateMachine: StateMachine<RequestState> = StateMachineImpl(IdleStateImpl(di), stateMachineName, stateObserver)
 
     suspend fun run() {
         stateMachine.run()
