@@ -1,0 +1,25 @@
+on:
+  release:
+    types: [released]
+
+jobs:
+  publish:
+
+    runs-on: macos-latest
+    if: github.repository == 'HylkeB/SusStateMachine'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.1.2
+
+      - name: Install JDK
+        uses: actions/setup-java$v4
+        with:
+          distribution: zulu
+          java-version: 17
+
+      - name: Set version for tag
+        run: echo "GITHUB_REF_NAME=${{ github.ref_name }}" >> $GITHUB_ENV
+      
+      - name: Publish all publications
+        run: ./gradlew publishAllPublicationsToMavenCentralRepository --no-configuration-cache

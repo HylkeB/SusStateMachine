@@ -1,26 +1,13 @@
-import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTargetWithTests
+import com.vanniktech.maven.publish.SonatypeHost
 
 plugins {
     alias(libs.plugins.multiplatform)
     alias(libs.plugins.android.library)
-    id("convention.publication")
     alias(libs.plugins.mockmp)
+    alias(libs.plugins.maven.publish)
 }
 
-group = "io.github.hylkeb"
-version = "1.0"
-
 kotlin {
-//    androidTarget {
-//        publishLibraryVariants("release")
-//        compilations.all {
-//            kotlinOptions {
-//                jvmTarget = "17"
-//            }
-//        }
-//    }
-
-
 
     jvm()
     androidTarget()
@@ -52,51 +39,8 @@ kotlin {
 //        browser()
 //        nodejs()
 //    }
-//    wasmWasi() // todo requires coroutine update
+//    wasmWasi() // todo requires coroutines update
 
-//    js {
-//        browser {
-//            webpackTask {
-//                mainOutputFileName = "susstatemachine.js"
-//            }
-//        }
-//        binaries.executable()
-//        nodejs()
-//    }
-//
-//    listOf(
-//        iosX64(),
-//        iosArm64(),
-//        iosSimulatorArm64()
-//    ).forEach {
-//        it.binaries.framework {
-//            baseName = "susstatemachine"
-//            isStatic = true
-//        }
-//    }
-//
-//    listOf(
-//        macosX64(),
-//        macosArm64()
-//    ).forEach {
-//        it.binaries.framework {
-//            baseName = "susstatemachine"
-//            isStatic = true
-//        }
-//    }
-//
-//    linuxX64 {
-//        binaries.staticLib {
-//            baseName = "susstatemachine"
-//        }
-//    }
-//
-//
-//    mingwX64 {
-//        binaries.staticLib {
-//            baseName = "susstatemachine"
-//        }
-//    }
 
     sourceSets {
         commonMain.dependencies {
@@ -109,15 +53,6 @@ kotlin {
             implementation(libs.kotest.assertions)
             implementation(libs.kodein.di)
         }
-//
-//        androidMain.dependencies {
-//            implementation(libs.kotlinx.coroutines.android)
-//        }
-//
-//        jvmMain.dependencies {
-//            implementation(libs.kotlinx.coroutines.swing)
-//        }
-
     }
 
     //https://kotlinlang.org/docs/native-objc-interop.html#export-of-kdoc-comments-to-generated-objective-c-headers
@@ -126,19 +61,53 @@ kotlin {
     }
 
 }
+
 mockmp {
     usesHelper = true
     installWorkaround()
 }
+
 android {
     namespace = "io.github.hylkeb"
     compileSdk = 34
-
-    defaultConfig {
-        minSdk = 24
-    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+// Help found here: https://github.com/vanniktech/gradle-maven-publish-plugin/?tab=readme-ov-file
+// and here: https://vanniktech.github.io/gradle-maven-publish-plugin/central/
+mavenPublishing {
+    publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL, automaticRelease = false) // might want to set this to true later
+    signAllPublications()
+    val version = System.getenv("GITHUB_REF_NAME")?.drop(1) ?: "0.0.0" // remove v from vX.Y.Z
+    coordinates("io.github.hylkeb", "susstatemachine", version)
+
+    pom {
+        name.set("SusStateMachine")
+        description.set("Kotlin Multiplatform library for a simple suspending state machine")
+        inceptionYear.set("2024")
+        url.set("https://github.com/HylkeB/SusStateMachine")
+
+        licenses {
+            license {
+                name.set("The Apache License, Version 2.0")
+                url.set("https://opensource.org/licenses/Apache-2.0.txt")
+                distribution.set("http://www.apache.org/licenses/LICENSE-2.0.txt")
+            }
+        }
+        developers {
+            developer {
+                id.set("HylkeB")
+                name.set("Hylke Bron")
+                email.set("hylke.bron@gmail.com")
+            }
+        }
+        scm {
+            url.set("https://github.com/HylkeB/SusStateMachine")
+            connection.set("scm:git:git://github.com/HylkeB/SusStateMachine.git")
+            developerConnection.set("scm:git:ssh://git@github.com/HylkeB/SusStateMachine.git")
+        }
     }
 }

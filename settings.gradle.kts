@@ -1,6 +1,5 @@
 rootProject.name = "SusStateMachine"
 include(":susstatemachine")
-includeBuild("convention-plugins")
 
 pluginManagement {
     repositories {
