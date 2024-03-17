@@ -82,6 +82,7 @@ mavenPublishing {
     publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL, automaticRelease = false) // might want to set this to true later
     signAllPublications()
     val version = System.getenv("GITHUB_REF_NAME")?.drop(1) ?: "0.0.0" // remove v from vX.Y.Z
+    println("Resolved version: $version")
     coordinates("io.github.hylkeb", "susstatemachine", version)
 
     pom {
