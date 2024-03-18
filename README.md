@@ -1,9 +1,8 @@
 # SusStateMachine
-_suspending state machine_
 
 ![Maven Central Version](https://img.shields.io/maven-central/v/io.github.hylkeb/susstatemachine)
 
-SusStateMachine is a tiny library to create simple yet powerful and robust finite state machines.
+SusStateMachine is a tiny kotlin multiplatform library to create simple yet powerful and robust finite state machines.
 It is short for _**suspending state machine**_
 
 The robustness lies in the fact that each must be implemented as a self-contained class, and can
