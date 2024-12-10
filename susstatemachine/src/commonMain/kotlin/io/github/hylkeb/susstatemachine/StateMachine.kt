@@ -37,6 +37,7 @@ interface StateMachine<T : State<T>> {
          * @param stateObserver A [StateObserver] that gets called every time a state transition is about to happen.
          */
         operator fun <T : State<T>> invoke(initialState: T, stateMachineName: String, stateObserver: StateObserver?): StateMachine<T> {
+            @Suppress("DEPRECATION")
             return StateMachineImpl(initialState, stateMachineName, stateObserver)
         }
     }
