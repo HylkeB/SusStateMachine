@@ -1,25 +1,7 @@
 package io.github.hylkeb.susstatemachine
 
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.first
-//
-//interface State<T : State<T>> {
-//
-//    /**
-//     * Name of the state, used primarily for debug purposes.
-//     * Can be overridden by child classes, e.g. to circumvent obfuscation.
-//     */
-//    val name: String get() = this::class.simpleName.toString()
-//
-//    /**
-//     * Called when the [StateMachine] enters this state.
-//     * This suspendable method should perform actions required by this state, and
-//     * suspend until it's ready to transition to a new state.
-//     * @return A [Transition] towards a followup state.
-//     */
-//    suspend fun enter(): Transition<T>
-//}
 
 /**
  * This class should be implemented by a concrete set of states on which a [StateMachine] operates.
