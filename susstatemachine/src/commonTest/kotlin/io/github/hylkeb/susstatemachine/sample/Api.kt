@@ -1,4 +1,4 @@
-package io.github.hylkeb.susstatemachine.test
+package io.github.hylkeb.susstatemachine.sample
 
 /**
  * Very simple api interface to simulate api calls

@@ -28,6 +28,20 @@ import kotlinx.coroutines.selects.select
  */
 interface StateMachine<T : State<T>> {
 
+    companion object {
+        /**
+         * Creates a new [StateMachine].
+         *
+         * @param initialState The initial state that will be entered once the StateMachine is [run].
+         * @param stateMachineName The name of this StateMachine used in the [stateObserver].
+         * @param stateObserver A [StateObserver] that gets called every time a state transition is about to happen.
+         */
+        operator fun <T : State<T>> invoke(initialState: T, stateMachineName: String, stateObserver: StateObserver?): StateMachine<T> {
+            @Suppress("DEPRECATION")
+            return StateMachineImpl(initialState, stateMachineName, stateObserver)
+        }
+    }
+
     /**
      * This flow emits the active states with it's consumers.
      * It has a replay value of 1 so the stateFlow always directly emits the active state for new
@@ -65,11 +79,10 @@ interface StateMachine<T : State<T>> {
  * When this is called, the active state will be cancelled and instead the transition provided by the override
  * will be used in step 2.
  *
- * @param initialState The initial state that will be entered once the StateMachine is [run].
- * @param stateMachineName The name of this StateMachine used in the [stateObserver].
- * @param stateObserver A [StateObserver] that gets called every time a state transition is about to happen.
  */
-class StateMachineImpl<T : State<T>>(
+@Deprecated("Use invoke method on StateMachine", replaceWith = ReplaceWith("StateMachine<T>"))
+class StateMachineImpl<T : State<T>>
+@Deprecated("", ReplaceWith("StateMachine(initialState, stateMachineName, stateObserver)", "io.github.hylkeb.susstatemachine.StateMachine")) constructor(
     initialState: T,
     private val stateMachineName: String = "state-machine",
     private val stateObserver: StateObserver? = null,

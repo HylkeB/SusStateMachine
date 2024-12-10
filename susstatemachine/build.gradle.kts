@@ -1,20 +1,23 @@
 import com.vanniktech.maven.publish.SonatypeHost
+import dev.mokkery.MockMode
+import dev.mokkery.verify.VerifyMode
 
 plugins {
     alias(libs.plugins.multiplatform)
     alias(libs.plugins.android.library)
-    alias(libs.plugins.mockmp)
     alias(libs.plugins.maven.publish)
+    alias(libs.plugins.mokkery)
+    alias(libs.plugins.allopen)
 }
 
 kotlin {
 
     jvm()
     androidTarget()
-//    androidNativeX64() // todo requires kotest 5.9.0
-//    androidNativeX86() // todo requires kotest 5.9.0
-//    androidNativeArm32() // todo requires kotest 5.9.0
-//    androidNativeArm64() // todo requires kotest 5.9.0
+    androidNativeX64()
+    androidNativeX86()
+    androidNativeArm32()
+    androidNativeArm64()
     iosArm64()
     iosX64()
     iosSimulatorArm64()
@@ -22,12 +25,12 @@ kotlin {
     watchosArm64()
     watchosX64()
     watchosSimulatorArm64()
-//    watchosDeviceArm64() // todo requires kotest 5.9.0
+    watchosDeviceArm64()
     tvosArm64()
     tvosX64()
     tvosSimulatorArm64()
     linuxX64()
-//    mingwX64() // todo requires kotest 5.9.0
+    mingwX64()
     macosX64()
     macosArm64()
     linuxArm64()
@@ -35,11 +38,17 @@ kotlin {
         browser()
         nodejs()
     }
-//    wasmJs { // todo requires kotest 5.9.0
+    // WasmJs doesn't pass the tests yet, probably due to mocking limitations
+//    @OptIn(ExperimentalWasmDsl::class)
+//    wasmJs {
 //        browser()
 //        nodejs()
 //    }
-//    wasmWasi() // todo requires coroutines update
+    // WasmWasi is not yet supported by kotest assertions
+//    @OptIn(ExperimentalWasmDsl::class)
+//    wasmWasi {
+//        nodejs()
+//    }
 
 
     sourceSets {
@@ -51,7 +60,6 @@ kotlin {
             implementation(kotlin("test"))
             implementation(libs.kotlinx.coroutines.test)
             implementation(libs.kotest.assertions)
-            implementation(libs.kodein.di)
         }
     }
 
@@ -62,9 +70,13 @@ kotlin {
 
 }
 
-mockmp {
-    usesHelper = true
-    installWorkaround()
+mokkery {
+    defaultVerifyMode.set(VerifyMode.exhaustiveOrder)
+    defaultMockMode.set(MockMode.autoUnit)
+}
+
+allOpen {
+    annotation("io.github.hylkeb.susstatemachine.sample.OpenForMocking")
 }
 
 android {
