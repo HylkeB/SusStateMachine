@@ -1,10 +1,11 @@
-package io.github.hylkeb.susstatemachine.test.requeststate
+package io.github.hylkeb.susstatemachine.sample.requeststate
 
-import io.github.hylkeb.susstatemachine.StateImpl
 import io.github.hylkeb.susstatemachine.Transition
+import io.github.hylkeb.susstatemachine.sample.OpenForMocking
 import kotlinx.coroutines.awaitCancellation
 
-class SuccessStateImpl(override val response: String) : StateImpl<RequestState>(), RequestState.Success {
+@OpenForMocking
+class Success(val response: String) : RequestState() {
     override suspend fun enter(): Transition<RequestState> {
         // Terminal state, remain in the success state, keeping hold
         // of the response until the state machine is cancelled.

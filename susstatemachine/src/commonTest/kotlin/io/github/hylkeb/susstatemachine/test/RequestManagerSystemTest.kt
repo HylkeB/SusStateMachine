@@ -1,9 +1,20 @@
-package io.github.hylkeb.susstatemachine
+package io.github.hylkeb.susstatemachine.test
 
-import io.github.hylkeb.susstatemachine.test.Api
-import io.github.hylkeb.susstatemachine.test.RequestManager
-import io.github.hylkeb.susstatemachine.test.requeststate.IdleStateImpl
-import io.github.hylkeb.susstatemachine.test.requeststate.RequestState
+import dev.mokkery.answering.calls
+import dev.mokkery.everySuspend
+import dev.mokkery.matcher.matching
+import dev.mokkery.mock
+import dev.mokkery.verifySuspend
+import io.github.hylkeb.susstatemachine.StateObserver
+import io.github.hylkeb.susstatemachine.sample.Api
+import io.github.hylkeb.susstatemachine.sample.DependencyContainer
+import io.github.hylkeb.susstatemachine.sample.RealDependencyContainer
+import io.github.hylkeb.susstatemachine.sample.RequestManager
+import io.github.hylkeb.susstatemachine.sample.requeststate.Error
+import io.github.hylkeb.susstatemachine.sample.requeststate.Fetching
+import io.github.hylkeb.susstatemachine.sample.requeststate.Idle
+import io.github.hylkeb.susstatemachine.sample.requeststate.RequestState
+import io.github.hylkeb.susstatemachine.sample.requeststate.Success
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -13,59 +24,53 @@ import kotlin.test.Test
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.flow.toCollection
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
-import org.kodein.di.DI
-import org.kodein.di.bindSingleton
-import org.kodein.mock.ArgConstraint
-import org.kodein.mock.Mock
-import org.kodein.mock.tests.TestsWithMocks
 
 /**
- * This class tests the sample StateMachine implementation as its used in a sample RequestManager class
- * Only the outer most dependency is mocked (the Api).
+ * This class tests the StateMachine implementation as it's used in a sample RequestManager class
+ * Only the outermost dependences are mocked (the Api and the StateObserver).
  *
- * > Note: normally this would be redundant as its split up in multiple smaller scoped unit tests.
- * > The states themselves should be individually tested, this is where the Api etc should be mocked.
+ * > Note: normally this would be redundant as it's split up in multiple smaller scoped unit tests.
+ * > The states themselves should be individually tested, this is where the Api etc. should be mocked.
  * > The RequestManager should mock the StateMachine and test every possible state transition like that.
+ *
+ * @see [RequestManagerUnitTest]
+ * @see [io.github.hylkeb.susstatemachine.test.requeststate.IdleUnitTest]
+ * @see [io.github.hylkeb.susstatemachine.test.requeststate.ErrorUnitTest]
+ * @see [io.github.hylkeb.susstatemachine.test.requeststate.FetchingUnitTest]
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-class SystemTest : TestsWithMocks() {
-    override fun setUpMocks() = injectMocks(mocker)
+class RequestManagerSystemTest {
 
-    @Mock
-    lateinit var api: Api
+    private val api = mock<Api>()
 
-    @Mock
-    lateinit var stateObserver: StateObserver
+    private val stateObserver = mock<StateObserver>()
 
-    private val di: DI by withMocks {
-        DI {
-            bindSingleton { api }
-            bindSingleton<StateMachine<RequestState>> { StateMachineImpl(IdleStateImpl(di), "RequestStateMachine", stateObserver) }
-        }
+    private val dependencyContainer: DependencyContainer by lazy {
+        RealDependencyContainer(
+            stateObserver = stateObserver,
+            api = api,
+        )
     }
 
-    private val sut: RequestManager by withMocks {
-        RequestManager(di)
-    }
+    private val sut: RequestManager by lazy { RequestManager(dependencyContainer) }
 
     @Test
     fun testHappyPath() = runTest {
         // Arrange
-        everySuspending { api.doApiCall() } runs {
+        everySuspend { api.doApiCall() } calls {
             delay(100)
             Result.success("mocked response")
         }
-        every { stateObserver.stateTransition(isAny(), isAny(), isAny(), isAny(), isAny()) } returns Unit
 
         // Act
         val runJob = launch { sut.run() }
         val observedStates = mutableListOf<RequestState>()
-        val collectJob = launch { sut.stateMachine.stateFlow.toList(observedStates) }
+        val collectJob = launch { sut.stateMachine.stateFlow.toCollection(observedStates) }
         val result = sut.getResponse()
 
         runJob.cancel()
@@ -74,25 +79,25 @@ class SystemTest : TestsWithMocks() {
         // Assert
         currentTime.shouldBe(100)
         observedStates.size.shouldBe(3)
-        observedStates[0].shouldBeInstanceOf<RequestState.Idle>()
-        observedStates[1].shouldBeInstanceOf<RequestState.Fetching>()
-        observedStates[2].shouldBeInstanceOf<RequestState.Success>()
+        observedStates[0].shouldBeInstanceOf<Idle>()
+        observedStates[1].shouldBeInstanceOf<Fetching>()
+        observedStates[2].shouldBeInstanceOf<Success>()
             .response.shouldBe("mocked response")
         result.isSuccess.shouldBeTrue()
         result.getOrNull().shouldBe("mocked response")
 
         // Verify
-        verifyWithSuspend {
-            stateObserver.stateTransition("RequestStateMachine", "IdleStateImpl", "FetchingStateImpl", null, null)
+        verifySuspend {
+            stateObserver.stateTransition("request-state-machine", "Idle", "Fetching", null, null)
             api.doApiCall()
-            stateObserver.stateTransition("RequestStateMachine", "FetchingStateImpl", "SuccessStateImpl", null, null)
+            stateObserver.stateTransition("request-state-machine", "Fetching", "Success", null, null)
         }
     }
 
     @Test
     fun testRetry() = runTest {
         // Arrange
-        val mockedResponses = ArrayDeque<(suspend (Array<*>) -> Result<String>)>(listOf(
+        val mockedResponses = ArrayDeque<(suspend () -> Result<String>)>(listOf(
             {
                 delay(100)
                 Result.failure(Exception("mocked exception"))
@@ -102,15 +107,14 @@ class SystemTest : TestsWithMocks() {
                 Result.success("mocked response")
             },
         ))
-        everySuspending { api.doApiCall() } runs {
-            mockedResponses.removeFirst().invoke(it)
+        everySuspend { api.doApiCall() } calls {
+            mockedResponses.removeFirst().invoke()
         }
-        every { stateObserver.stateTransition(isAny(), isAny(), isAny(), isAny(), isAny()) } runs { println(it.joinToString()) }
 
         // Act
         val runJob = launch { sut.run() }
         val observedStates = mutableListOf<RequestState>()
-        val collectJob = launch { sut.stateMachine.stateFlow.toList(observedStates) }
+        val collectJob = launch { sut.stateMachine.stateFlow.toCollection(observedStates) }
         val result1 = sut.getResponse()
         val result2 = sut.getResponse()
 
@@ -120,12 +124,12 @@ class SystemTest : TestsWithMocks() {
         // Assert
         currentTime.shouldBe(200)
         observedStates.size.shouldBe(5)
-        observedStates[0].shouldBeInstanceOf<RequestState.Idle>()
-        observedStates[1].shouldBeInstanceOf<RequestState.Fetching>()
-        observedStates[2].shouldBeInstanceOf<RequestState.Error>()
+        observedStates[0].shouldBeInstanceOf<Idle>()
+        observedStates[1].shouldBeInstanceOf<Fetching>()
+        observedStates[2].shouldBeInstanceOf<Error>()
             .cause.message.shouldBe("mocked exception")
-        observedStates[3].shouldBeInstanceOf<RequestState.Fetching>()
-        observedStates[4].shouldBeInstanceOf<RequestState.Success>()
+        observedStates[3].shouldBeInstanceOf<Fetching>()
+        observedStates[4].shouldBeInstanceOf<Success>()
             .response.shouldBe("mocked response")
 
         result1.isSuccess.shouldBeFalse()
@@ -136,39 +140,38 @@ class SystemTest : TestsWithMocks() {
         result2.getOrNull().shouldBe("mocked response")
 
         // Verify
-        verifyWithSuspend {
-            stateObserver.stateTransition("RequestStateMachine", "IdleStateImpl", "FetchingStateImpl", null, null)
+        verifySuspend {
+            stateObserver.stateTransition("request-state-machine", "Idle", "Fetching", null, null)
             api.doApiCall()
             stateObserver.stateTransition(
-                isEqual("RequestStateMachine"),
-                isEqual("FetchingStateImpl"),
-                isEqual("ErrorStateImpl"),
-                isEqual("api error"),
-                isValid {
+                stateMachine = ("request-state-machine"),
+                fromState = ("Fetching"),
+                toState = ("Error"),
+                reason = ("api error"),
+                cause = matching {
                     it.shouldNotBeNull()
                         .message.shouldBe("mocked exception")
-                    ArgConstraint.Result.Success
+                    true
                 }
             )
-            stateObserver.stateTransition("RequestStateMachine", "ErrorStateImpl", "FetchingStateImpl", null, null)
+            stateObserver.stateTransition("request-state-machine", "Error", "Fetching", null, null)
             api.doApiCall()
-            stateObserver.stateTransition("RequestStateMachine", "FetchingStateImpl", "SuccessStateImpl", null, null)
+            stateObserver.stateTransition("request-state-machine", "Fetching", "Success", null, null)
         }
     }
 
     @Test
     fun testEnsureApiCalledJustOnceWithMultipleConsumers() = runTest {
         // Arrange
-        everySuspending { api.doApiCall() } runs {
+        everySuspend { api.doApiCall() } calls {
             delay(100)
             Result.success("mocked response")
         }
-        every { stateObserver.stateTransition(isAny(), isAny(), isAny(), isAny(), isAny()) } returns Unit
 
         // Act
         val runJob = launch { sut.run() }
         val observedStates = mutableListOf<RequestState>()
-        val collectJob = launch { sut.stateMachine.stateFlow.toList(observedStates) }
+        val collectJob = launch { sut.stateMachine.stateFlow.toCollection(observedStates) }
         val result1Deferred = async { sut.getResponse() }
         advanceTimeBy(20)
         val result2Deferred = async { sut.getResponse() }
@@ -189,9 +192,9 @@ class SystemTest : TestsWithMocks() {
         // Assert
         currentTime.shouldBe(110) // 100 for the apicall + 10 ms later result5 is requested
         observedStates.size.shouldBe(3)
-        observedStates[0].shouldBeInstanceOf<RequestState.Idle>()
-        observedStates[1].shouldBeInstanceOf<RequestState.Fetching>()
-        observedStates[2].shouldBeInstanceOf<RequestState.Success>()
+        observedStates[0].shouldBeInstanceOf<Idle>()
+        observedStates[1].shouldBeInstanceOf<Fetching>()
+        observedStates[2].shouldBeInstanceOf<Success>()
             .response.shouldBe("mocked response")
         result1.isSuccess.shouldBeTrue()
         result1.getOrNull().shouldBe("mocked response")
@@ -205,10 +208,10 @@ class SystemTest : TestsWithMocks() {
         result5.getOrNull().shouldBe("mocked response")
 
         // Verify
-        verifyWithSuspend {
-            stateObserver.stateTransition("RequestStateMachine", "IdleStateImpl", "FetchingStateImpl", null, null)
+        verifySuspend {
+            stateObserver.stateTransition("request-state-machine", "Idle", "Fetching", null, null)
             api.doApiCall()
-            stateObserver.stateTransition("RequestStateMachine", "FetchingStateImpl", "SuccessStateImpl", null, null)
+            stateObserver.stateTransition("request-state-machine", "Fetching", "Success", null, null)
         }
     }
 
