@@ -1,9 +1,8 @@
 # SusStateMachine
-_suspending state machine_
 
 ![Maven Central Version](https://img.shields.io/maven-central/v/io.github.hylkeb/susstatemachine)
 
-SusStateMachine is a tiny library to create simple yet powerful and robust finite state machines.
+SusStateMachine is a tiny kotlin multiplatform library to create simple yet powerful and robust finite state machines.
 It is short for _**suspending state machine**_
 
 The robustness lies in the fact that each must be implemented as a self-contained class, and can
@@ -11,6 +10,14 @@ only execute suspending code when the state is active. The way the StateMachine 
 is impossible to have multiple active states. This eliminates all sorts of concurrency issues.
 
 The way you have to set up the states of your state machine also helps to keep them readable.
+
+## Gradle dependency
+
+To use this library, just add the following dependency to your project.
+
+```kotlin
+implementation("io.github.hylkeb:susstatemachine:$version")
+```
 
 ## Example
 
