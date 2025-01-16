@@ -20,7 +20,7 @@ abstract class State<T : State<T>> {
      * Name of the state, used primarily for debug purposes.
      * Can be overridden by child classes, e.g. to circumvent obfuscation.
      */
-    val name: String get() = this::class.simpleName.toString()
+    open val name: String get() = this::class.simpleName.toString()
 
     /**
      * Called when the [StateMachine] enters this state.
