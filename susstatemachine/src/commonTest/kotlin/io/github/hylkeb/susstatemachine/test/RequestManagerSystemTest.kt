@@ -27,6 +27,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.toCollection
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
 
@@ -50,15 +51,6 @@ class RequestManagerSystemTest {
 
     private val stateObserver = mock<StateObserver>()
 
-    private val dependencyContainer: DependencyContainer by lazy {
-        RealDependencyContainer(
-            stateObserver = stateObserver,
-            api = api,
-        )
-    }
-
-    private val sut: RequestManager by lazy { RequestManager(dependencyContainer) }
-
     @Test
     fun testHappyPath() = runTest {
         // Arrange
@@ -68,12 +60,12 @@ class RequestManagerSystemTest {
         }
 
         // Act
-        val runJob = launch { sut.run() }
+        val sut = RequestManager(api, stateObserver, backgroundScope)
         val observedStates = mutableListOf<RequestState>()
         val collectJob = launch { sut.stateMachine.stateFlow.toCollection(observedStates) }
         val result = sut.getResponse()
+        advanceUntilIdle()
 
-        runJob.cancel()
         collectJob.cancel()
 
         // Assert
@@ -112,13 +104,13 @@ class RequestManagerSystemTest {
         }
 
         // Act
-        val runJob = launch { sut.run() }
+        val sut = RequestManager(api, stateObserver, backgroundScope)
         val observedStates = mutableListOf<RequestState>()
         val collectJob = launch { sut.stateMachine.stateFlow.toCollection(observedStates) }
         val result1 = sut.getResponse()
         val result2 = sut.getResponse()
+        advanceUntilIdle()
 
-        runJob.cancel()
         collectJob.cancel()
 
         // Assert
@@ -169,7 +161,7 @@ class RequestManagerSystemTest {
         }
 
         // Act
-        val runJob = launch { sut.run() }
+        val sut = RequestManager(api, stateObserver, backgroundScope)
         val observedStates = mutableListOf<RequestState>()
         val collectJob = launch { sut.stateMachine.stateFlow.toCollection(observedStates) }
         val result1Deferred = async { sut.getResponse() }
@@ -186,7 +178,6 @@ class RequestManagerSystemTest {
         val result4 = result4Deferred.await()
         advanceTimeBy(10)
         val result5 = sut.getResponse()
-        runJob.cancel()
         collectJob.cancel()
 
         // Assert

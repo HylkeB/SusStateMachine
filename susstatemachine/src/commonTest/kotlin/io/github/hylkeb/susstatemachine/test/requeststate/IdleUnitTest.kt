@@ -3,7 +3,6 @@ package io.github.hylkeb.susstatemachine.test.requeststate
 import io.github.hylkeb.susstatemachine.sample.MockDependencyContainer
 import io.github.hylkeb.susstatemachine.sample.requeststate.Fetching
 import io.github.hylkeb.susstatemachine.sample.requeststate.Idle
-import io.github.hylkeb.susstatemachine.test.prepareForTest
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlin.test.Test
@@ -17,7 +16,7 @@ class IdleUnitTest {
     @Test
     fun enterWhenFetchCalledAssertTransitionToFetching() = runTest {
         // Arrange
-        val sut = Idle(mockDependencyContainer).prepareForTest() // Need to prepare the state for test, because it uses awaitTransition
+        val sut = Idle(mockDependencyContainer)
 
         // Act
         val transition = async { sut.enter() }

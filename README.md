@@ -35,7 +35,7 @@ The state machine makes sure only one actual call is being performed, and it mak
 
 In this example, the states will be defined using a sealed class, namely `RequestState`, which has to extend the `State<T : State>` class.
 
-https://github.com/HylkeB/SusStateMachine/blob/eac733097ee490f86fe2782a543f807d073c3c0d/susstatemachine/src/commonTest/kotlin/io/github/hylkeb/susstatemachine/sample/requeststate/RequestState.kt?plain=1#L5
+https://github.com/HylkeB/SusStateMachine/blob/main/susstatemachine/src/commonTest/kotlin/io/github/hylkeb/susstatemachine/sample/requeststate/RequestState.kt?plain=1#L5
 
 Each state inherits of RequestState and is implemented in its own file to improve readability.
 The following code shows some very simple implementation for each of the states.
@@ -47,13 +47,13 @@ Sometimes the work a state must do is just wait for some external signal, and so
 The `Transition` class describes a transition to a new toState.
 It can optionally contain a reason a cause for troubleshooting.
 
-https://github.com/HylkeB/SusStateMachine/blob/eac733097ee490f86fe2782a543f807d073c3c0d/susstatemachine/src/commonTest/kotlin/io/github/hylkeb/susstatemachine/sample/requeststate/Idle.kt?plain=1#L9-L23
+https://github.com/HylkeB/SusStateMachine/blob/main/susstatemachine/src/commonTest/kotlin/io/github/hylkeb/susstatemachine/sample/requeststate/Idle.kt?plain=1#L10-L22
 
-https://github.com/HylkeB/SusStateMachine/blob/eac733097ee490f86fe2782a543f807d073c3c0d/susstatemachine/src/commonTest/kotlin/io/github/hylkeb/susstatemachine/sample/requeststate/Fetching.kt?plain=1#L8-L21
+https://github.com/HylkeB/SusStateMachine/blob/main/susstatemachine/src/commonTest/kotlin/io/github/hylkeb/susstatemachine/sample/requeststate/Fetching.kt?plain=1#L8-L21
 
-https://github.com/HylkeB/SusStateMachine/blob/eac733097ee490f86fe2782a543f807d073c3c0d/susstatemachine/src/commonTest/kotlin/io/github/hylkeb/susstatemachine/sample/requeststate/Error.kt?plain=1#L9-L26
+https://github.com/HylkeB/SusStateMachine/blob/main/susstatemachine/src/commonTest/kotlin/io/github/hylkeb/susstatemachine/sample/requeststate/Error.kt?plain=1#L10-L25
 
-https://github.com/HylkeB/SusStateMachine/blob/eac733097ee490f86fe2782a543f807d073c3c0d/susstatemachine/src/commonTest/kotlin/io/github/hylkeb/susstatemachine/sample/requeststate/Success.kt?plain=1#L7-L16
+https://github.com/HylkeB/SusStateMachine/blob/main/susstatemachine/src/commonTest/kotlin/io/github/hylkeb/susstatemachine/sample/requeststate/Success.kt?plain=1#L8-L16
 
 ### Using the state machine
 
@@ -71,7 +71,7 @@ Furthermore, it will have one method called `suspend fun getResponse(): Result<S
 > or an arbitrary lifecycle such as the lifecycle of a logged in customer.
 > Just make sure that the coroutine that runs the state machine is cancelled at the end.
 
-https://github.com/HylkeB/SusStateMachine/blob/eac733097ee490f86fe2782a543f807d073c3c0d/susstatemachine/src/commonTest/kotlin/io/github/hylkeb/susstatemachine/sample/RequestManager.kt?plain=1#L13-L49
+https://github.com/HylkeB/SusStateMachine/blob/main/susstatemachine/src/commonTest/kotlin/io/github/hylkeb/susstatemachine/sample/RequestManager.kt?plain=1#L17-L59
 
 Because the states are defined as a sealed class, it can perform exhaustive when statements,
 always rigorously handling every case.
@@ -90,32 +90,21 @@ with the proper DI infrastructure it is easy to test all of its transitions.
 
 For example see how the Fetching state is tested.
 
-https://github.com/HylkeB/SusStateMachine/blob/eac733097ee490f86fe2782a543f807d073c3c0d/susstatemachine/src/commonTest/kotlin/io/github/hylkeb/susstatemachine/test/requeststate/FetchingUnitTest.kt?plain=1#L18-L59
+https://github.com/HylkeB/SusStateMachine/blob/main/susstatemachine/src/commonTest/kotlin/io/github/hylkeb/susstatemachine/test/requeststate/FetchingUnitTest.kt?plain=1#L18-L59
 
-Some states just have to wait for an external signal and then transition to another state. 
-You also want to test these states, however it is likely that these states use `awaitTransition()` in their signalling method.
-The `awaitTransition()` method makes sure the signalling method only returns once the state has transitioned to a new state.
-This is helpful in the StateMachine manager classes (e.g. RequestManager), when the manager wants to initiate a state transition and then observe the states emitted afterwards.
+Some states simply wait for an external signal before transitioning to a new state. 
+In these cases, the consumer of the state machine (for example a manager class like RequestManager) 
+is responsible for observing the stateFlow and waiting for the transition. 
 
-The `awaitTransition()` method waits until the StateMachine that executes the state has a new active state.
-When unit-testing such states, there is no StateMachine that can emit a new state, so the `awaitTransition()` method would wait indefinitely.
-To circumvent this, a helper method has been added: `fun <T : State<*>> T.prepareForTest(): T`, which configures the state in such a way that
-any call to `awaitTransition()` immediately returns.
-
-See this in action in the unit tests for the Error and Idle states:
-
-https://github.com/HylkeB/SusStateMachine/blob/eac733097ee490f86fe2782a543f807d073c3c0d/susstatemachine/src/commonTest/kotlin/io/github/hylkeb/susstatemachine/test/requeststate/IdleUnitTest.kt?plain=1#L13-L33
-
-https://github.com/HylkeB/SusStateMachine/blob/eac733097ee490f86fe2782a543f807d073c3c0d/susstatemachine/src/commonTest/kotlin/io/github/hylkeb/susstatemachine/test/requeststate/ErrorUnitTest.kt?plain=1#L13-L33
+This means that when a state transition is triggered by an external event, the consumer must ensure it waits for the resulting state change before proceeding.
 
 ### StateMachine managers
 
-The StateMachine manager (in the example above the RequestManager) can easily be tested by mocking the
-StateMachine, as its a simple interface. Just stub the stateFlow with your own prefilled stateFlow with
-mocked states, and you can easily test if your StateMachine consumer works properly, without mocking every
-dependency of the states themselves:
+StateMachine manager classes (e.g., RequestManager) can be easily tested by mocking the StateMachine interface. 
+You can stub stateFlow with your own prefilled states and verify that the consumer behaves correctly, 
+without needing to mock every dependency of the individual states.
 
-https://github.com/HylkeB/SusStateMachine/blob/eac733097ee490f86fe2782a543f807d073c3c0d/susstatemachine/src/commonTest/kotlin/io/github/hylkeb/susstatemachine/test/RequestManagerUnitTest.kt?plain=1#L26-L130
+https://github.com/HylkeB/SusStateMachine/blob/main/susstatemachine/src/commonTest/kotlin/io/github/hylkeb/susstatemachine/test/RequestManagerUnitTest.kt?plain=1#L28-L135
 
 ## Observability
 

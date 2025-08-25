@@ -1,104 +1,126 @@
 package io.github.hylkeb.susstatemachine
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 
 /**
- * The StateMachine class operates on the concrete set of states of type T.
- * When the StateMachine runs, it performs the following actions in a loop for as long as the coroutineContext is active:
- * 1. Call the [State.enter] method of the active [State];
- * 2. Wait until a new [Transition] is returned. It will inform the [StateObserver] that a state transition is about to take place;
- * 3. Update the active state to the one returned from [Transition.toState];
- * 4. Back to step 1.
+ * A [StateMachine] executes a concrete set of [State]s of type [T] and manages state transitions.
  *
- * Additionally, the active state of the StateMachine can be overridden by the method [StateMachine.overrideState].
- * When this is called, the active state will be cancelled and instead the transition provided by the override
- * will be used in step 2.
+ * When the state machine runs, it repeatedly performs the following steps as long as the
+ * [CoroutineScope] is active:
+ * 1. Call [State.enter] on the active state.
+ * 2. Wait until a new [Transition] is returned.
+ * 3. Notify the [StateObserver] (if present) that a transition is about to occur.
+ * 4. Update the active state to [Transition.toState].
+ * 5. Repeat from step 1.
  *
- * This interface should be instantiated as [StateMachineImpl], or it can be instantiated using a mocking
- * library for testing purposes.
+ * The active state can also be overridden via [overrideState], which cancels the current state
+ * and immediately applies the provided transition.
  */
 interface StateMachine<T : State<T>> {
 
     companion object {
         /**
-         * Creates a new [StateMachine].
+         * Creates a new [StateMachine] instance.
          *
-         * @param initialState The initial state that will be entered once the StateMachine is [run].
-         * @param stateMachineName The name of this StateMachine used in the [stateObserver].
-         * @param stateObserver A [StateObserver] that gets called every time a state transition is about to happen.
+         * @param initialState The initial state to execute when the machine starts.
+         * @param stateMachineName Optional name for the machine, used in [StateObserver] callbacks.
+         * @param stateObserver Optional observer called on every state transition.
          */
-        operator fun <T : State<T>> invoke(initialState: T, stateMachineName: String, stateObserver: StateObserver?): StateMachine<T> {
-            @Suppress("DEPRECATION")
-            return StateMachineImpl(initialState, stateMachineName, stateObserver)
+        operator fun <T : State<T>> invoke(
+            initialState: T,
+            stateMachineName: String = "state-machine",
+            stateObserver: StateObserver? = null,
+        ): StateMachine<T> {
+            return StateMachineImpl(
+                initialState = initialState,
+                stateMachineName = stateMachineName,
+                stateObserver = stateObserver,
+            )
         }
+
+        /**
+         * Suspends until the next state becomes active, starting from [currentState].
+         *
+         * @param currentState The state to wait for a transition away from.
+         * @return The next active state after [currentState].
+         */
+        suspend inline fun <T : State<T>> StateMachine<T>.awaitNextState(currentState: T): T {
+            return stateFlow.first { it != currentState }
+        }
+
+        /**
+         * Returns the current active state of the state machine.
+         *
+         * This is a snapshot of the current state at the time of access. It may change immediately
+         * if the state machine transitions to a new state.
+         */
+        inline val <T : State<T>> StateMachine<T>.currentState: T
+            get() = stateFlow.value
     }
 
     /**
-     * This flow emits the active states with it's consumers.
-     * It has a replay value of 1 so the stateFlow always directly emits the active state for new
-     * consumers. It is initially initialised with the provided initialState.
+     * A [StateFlow] that emits the current active state.
+     *
+     * Consumers can collect this flow to observe the current state at any time. This represents
+     * the authoritative, latest state of the machine.
      */
-    val stateFlow: SharedFlow<T>
+    val stateFlow: StateFlow<T>
 
     /**
-     * It is required to call this method to actually run this state machine.
-     * Because the state machine calls the suspending [State.enter] methods, it requires a coroutineContext
-     * to do so.
+     * Starts executing the state machine.
      *
-     * When cancelling this run method, the [State.enter] method of the active state is also cancelled.
-     * It will also stop entering any new states.
+     * This function launches the state machine loop and begins processing the active state
+     * and any subsequent state transitions.
+     *
+     * The state machine continues running until the associated [CoroutineScope] is cancelled.
+     *
+     * **Important:** Calling [run] multiple times is not allowed and results in undefined behavior.
      */
     suspend fun run()
 
     /**
-     * Overrides the active state. It will result in the active state being cancelled and then it will
-     * transition to the state provided in this [stateTransition].
-     * @param stateTransition The state to transition to.
+     * Overrides the active state with a new [Transition].
+     *
+     * The current state will be cancelled and the state machine will immediately transition
+     * to [stateTransition.toState].
+     *
+     * @param stateTransition The transition to apply, including the new state and optional
+     *   reason or cause.
      */
     fun overrideState(stateTransition: Transition<T>)
 }
 
-/**
- * The StateMachine class operates on the concrete set of states of type T.
- * When the StateMachine runs, it performs the following actions in a loop for as long as the coroutineContext is active:
- * 1. Call the [State.enter] method of the active [State];
- * 2. Wait until a new [Transition] is returned. It will inform the [StateObserver] that a state transition is about to take place;
- * 3. Update the active state to the one returned from [Transition.toState];
- * 4. Back to step 1.
- *
- * Additionally, the active state of the StateMachine can be overridden by the method [StateMachine.overrideState].
- * When this is called, the active state will be cancelled and instead the transition provided by the override
- * will be used in step 2.
- *
- */
-@Deprecated("Use invoke method on StateMachine", replaceWith = ReplaceWith("StateMachine<T>"))
-class StateMachineImpl<T : State<T>>
-@Deprecated("", ReplaceWith("StateMachine(initialState, stateMachineName, stateObserver)", "io.github.hylkeb.susstatemachine.StateMachine")) constructor(
+internal class StateMachineImpl<T : State<T>> (
     initialState: T,
-    private val stateMachineName: String = "state-machine",
-    private val stateObserver: StateObserver? = null,
+    private val stateMachineName: String,
+    private val stateObserver: StateObserver?,
 ) : StateMachine<T> {
 
-    private val myself: StateMachine<T> = this
-    private val mutableSharedFlow = MutableSharedFlow<T>(1).apply { tryEmit(initialState) }
     private val overrideStateTransition = MutableStateFlow<Transition<T>?>(null)
 
-    override val stateFlow: SharedFlow<T> = mutableSharedFlow.asSharedFlow()
+    private val mutableStateFlow = MutableStateFlow(initialState)
+    override val stateFlow: StateFlow<T> = mutableStateFlow.asStateFlow()
 
-
-    override suspend fun run(): Unit = coroutineScope {
+    override suspend fun run() = coroutineScope {
         while (coroutineContext.isActive) {
-            val fromState = stateFlow.first()
-            fromState.becameActive(myself)
+            val fromState = mutableStateFlow.value
 
             val regularStateTransition = async { fromState.enter() }
             val transitionDueToOverride = async { overrideStateTransition.filterNotNull().first() }
@@ -116,7 +138,7 @@ class StateMachineImpl<T : State<T>>
             }
 
             stateObserver?.stateTransition(stateMachineName, fromState.name, transition.toState.name, transition.reason, transition.cause)
-            mutableSharedFlow.emit(transition.toState)
+            mutableStateFlow.value = transition.toState
         }
     }
 

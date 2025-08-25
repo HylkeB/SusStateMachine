@@ -18,6 +18,5 @@ class Idle(private val dependencyContainer: DependencyContainer) : RequestState(
 
     suspend fun fetch() {
         fetchRequested.complete()
-        awaitTransition()
     }
 }
