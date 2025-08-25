@@ -21,6 +21,5 @@ class Error(
 
     suspend fun retry() {
         retryRequested.complete()
-        awaitTransition()
     }
 }

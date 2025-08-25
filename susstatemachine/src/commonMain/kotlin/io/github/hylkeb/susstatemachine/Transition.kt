@@ -12,7 +12,7 @@ package io.github.hylkeb.susstatemachine
  * The [reason] and [cause] are provided to the [StateObserver] and function purely as values helpful
  * during troubleshooting.
  */
-class Transition<T : State<T>>(
+class Transition<out T : State<T>>(
     /**
      * The [State] to transition to.
      */

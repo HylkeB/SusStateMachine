@@ -42,7 +42,7 @@ fun interface StateObserver {
      * that in very rare race conditions, this toState might never become active ([entered][State.enter])
      * This happens when the coroutineContext of the [StateMachine.run] method is cancelled at just the right time.
      *
-     * @param stateMachine The [name][StateMachine.stateMachineName] of the state machine in which the transition took place
+     * @param stateMachine The name of the state machine in which the transition took place
      * @param fromState The [name][State.name] of the previous active state
      * @param toState The [name][State.name] of the state that is about to become active (as provided by the [transition][Transition.toState])
      * @param reason The [reason][Transition.reason] of the state transition

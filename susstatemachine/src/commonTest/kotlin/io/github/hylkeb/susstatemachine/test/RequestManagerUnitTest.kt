@@ -19,7 +19,9 @@ import kotlin.test.Test
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -37,41 +39,43 @@ class RequestManagerUnitTest {
     fun getResponseWhenStateTransitionsToErrorAssertFailure() = runTest {
         // Arrange
         val apiException = Exception("fake exception")
-        val mockedFlow = MutableSharedFlow<RequestState>()
+        val mockedFlow = MutableStateFlow<RequestState>(idleState)
         every { requestStateMachine.stateFlow } returns mockedFlow
         every { errorState.cause } returns apiException
-        val sut = RequestManager(dependencyContainer)
+        val sut = RequestManager(dependencyContainer, backgroundScope)
 
         // Act
         val result = async { sut.getResponse() }
-        advanceUntilIdle()
-        mockedFlow.emit(idleState)
+        runCurrent()
         mockedFlow.emit(fetchingState)
+        runCurrent()
         mockedFlow.emit(errorState)
+        runCurrent()
 
         // Assert
+        result.await().shouldBeFailure()
+            .shouldBe(apiException)
         verifySuspend {
             idleState.fetch()
             errorState.cause
         }
-        result.await().shouldBeFailure()
-            .shouldBe(apiException)
     }
 
     @Test
     fun getResponseWhenStateTransitionsToSuccessAssertSuccess() = runTest {
         // Arrange
-        val mockedFlow = MutableSharedFlow<RequestState>()
+        val mockedFlow = MutableStateFlow<RequestState>(idleState)
         every { requestStateMachine.stateFlow } returns mockedFlow
         every { successState.response } returns "response"
-        val sut = RequestManager(dependencyContainer)
+        val sut = RequestManager(dependencyContainer, backgroundScope)
 
         // Act
         val result = async { sut.getResponse() }
-        advanceUntilIdle()
-        mockedFlow.emit(idleState)
+        runCurrent()
         mockedFlow.emit(fetchingState)
+        runCurrent()
         mockedFlow.emit(successState)
+        runCurrent()
 
         // Assert
         verifySuspend {
@@ -85,16 +89,16 @@ class RequestManagerUnitTest {
     @Test
     fun getResponseWhenStateAlreadyFetchingAssertResult() = runTest {
         // Arrange
-        val mockedFlow = MutableSharedFlow<RequestState>()
+        val mockedFlow = MutableStateFlow<RequestState>(fetchingState)
         every { requestStateMachine.stateFlow } returns mockedFlow
         every { successState.response } returns "response"
-        val sut = RequestManager(dependencyContainer)
+        val sut = RequestManager(dependencyContainer, backgroundScope)
 
         // Act
         val result = async { sut.getResponse() }
-        advanceUntilIdle()
-        mockedFlow.emit(fetchingState)
+        runCurrent()
         mockedFlow.emit(successState)
+        runCurrent()
 
         // Assert
         verifySuspend {
@@ -107,17 +111,18 @@ class RequestManagerUnitTest {
     @Test
     fun getResponseWhenStateAlreadyErrorAssertRetryAndResult() = runTest {
         // Arrange
-        val mockedFlow = MutableSharedFlow<RequestState>()
+        val mockedFlow = MutableStateFlow<RequestState>(errorState)
         every { requestStateMachine.stateFlow } returns mockedFlow
         every { successState.response } returns "response"
-        val sut = RequestManager(dependencyContainer)
+        val sut = RequestManager(dependencyContainer, backgroundScope)
 
         // Act
         val result = async { sut.getResponse() }
-        advanceUntilIdle()
-        mockedFlow.emit(errorState)
+        runCurrent()
         mockedFlow.emit(fetchingState)
+        runCurrent()
         mockedFlow.emit(successState)
+        runCurrent()
 
         // Assert
         verifySuspend {
